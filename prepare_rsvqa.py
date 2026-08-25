@@ -46,8 +46,14 @@ def prepare_split(split_name, question_file, answer_file):
     answer_lookup = {}
 
     for answer in answers:
-        answer_id = answer["id"]
-        answer_lookup[answer_id] = answer["answer"]
+     answer_id = answer.get("id")
+     answer_text = answer.get("answer")
+
+     if answer_id is None or answer_text is None:
+        print("Skipping invalid answer record:", answer)
+        continue
+
+     answer_lookup[answer_id] = answer_text
 
     # --------------------------------
     # Create training examples
