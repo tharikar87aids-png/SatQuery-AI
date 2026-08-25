@@ -28,96 +28,188 @@ def load_json(path):
 # PREPARE ONE DATA SPLIT
 # ==============================
 
-def prepare_split(split_name, question_file, answer_file):
+def prepare_split(split_name, question_file, answer_file, image_file):
 
     print(f"\nPreparing {split_name}...")
 
+    # Load files
     questions_data = load_json(question_file)
     answers_data = load_json(answer_file)
+    images_data = load_json(image_file)
 
-    # RSVQA JSON files contain lists under these keys
+    # Get lists
     questions = questions_data["questions"]
     answers = answers_data["answers"]
+    images = images_data["images"]
 
-    # --------------------------------
-    # Create answer lookup
-    # --------------------------------
+    print(f"Questions found: {len(questions)}")
+    print(f"Answers found: {len(answers)}")
+    print(f"Images found: {len(images)}")
+
+
+    # ==============================
+    # CREATE ANSWER LOOKUP
+    # ==============================
 
     answer_lookup = {}
 
     for answer in answers:
-     answer_id = answer.get("id")
-     answer_text = answer.get("answer")
 
-     if answer_id is None or answer_text is None:
-        print("Skipping invalid answer record:", answer)
-        continue
+        answer_id = answer.get("id")
+        answer_text = answer.get("answer")
 
-     answer_lookup[answer_id] = answer_text
+        if answer_id is None or answer_text is None:
+            print("Skipping invalid answer record:", answer)
+            continue
 
-    # --------------------------------
-    # Create training examples
-    # --------------------------------
+        answer_lookup[answer_id] = answer_text
+
+
+    # ==============================
+    # CREATE QUESTION → IMAGE MAPPING
+    # ==============================
+
+    question_to_image = {}
+
+    for image in images:
+
+        image_id = image["id"]
+
+        for question_id in image["questions_ids"]:
+
+            question_to_image[question_id] = image_id
+
+
+    print(f"Question-image mappings: {len(question_to_image)}")
+
+
+    # ==============================
+    # CREATE VLM EXAMPLES
+    # ==============================
 
     examples = []
 
     for question in questions:
 
         question_id = question["id"]
-        image_id = question["img_id"]
         question_text = question["question"]
+
+        # ------------------------------
+        # Find image using question ID
+        # ------------------------------
+
+        if question_id not in question_to_image:
+
+            print(
+                f"Warning: image mapping not found "
+                f"for question {question_id}"
+            )
+
+            continue
+
+        image_id = question_to_image[question_id]
+
+
+        # ------------------------------
+        # Get answer ID
+        # ------------------------------
 
         answer_ids = question["answers_ids"]
 
-        # Get the first answer
         if len(answer_ids) == 0:
+            print(
+                f"Warning: no answer found "
+                f"for question {question_id}"
+            )
+
             continue
 
         answer_id = answer_ids[0]
 
+
+        # ------------------------------
+        # Find actual answer
+        # ------------------------------
+
         if answer_id not in answer_lookup:
-            print(f"Warning: answer ID {answer_id} not found")
+
+            print(
+                f"Warning: answer ID {answer_id} "
+                f"not found"
+            )
+
             continue
 
         answer_text = answer_lookup[answer_id]
 
-        # --------------------------------
+
+        # ------------------------------
         # Image filename
-        # --------------------------------
+        # ------------------------------
 
         image_filename = f"{image_id}.tif"
+
         image_path = IMAGE_DIR / image_filename
 
+
+        # ------------------------------
         # Check image exists
+        # ------------------------------
+
         if not image_path.exists():
-            print(f"Warning: image not found: {image_path}")
+
+            print(
+                f"Warning: image not found: "
+                f"{image_path}"
+            )
+
             continue
 
-        # --------------------------------
-        # Create VLM example
-        # --------------------------------
+
+        # ==============================
+        # CREATE VLM EXAMPLE
+        # ==============================
 
         example = {
+
             "image": f"Images_LR/{image_filename}",
+
             "question": question_text,
+
             "answer": answer_text
+
         }
 
         examples.append(example)
 
-    # --------------------------------
-    # Save JSONL
-    # --------------------------------
+
+    # ==============================
+    # SAVE JSONL
+    # ==============================
 
     output_file = OUTPUT_DIR / f"{split_name}.jsonl"
 
     with open(output_file, "w", encoding="utf-8") as f:
 
         for example in examples:
-            f.write(json.dumps(example, ensure_ascii=False) + "\n")
 
-    print(f"{split_name} examples created: {len(examples)}")
-    print(f"Saved to: {output_file}")
+            f.write(
+                json.dumps(
+                    example,
+                    ensure_ascii=False
+                )
+                + "\n"
+            )
+
+
+    print(
+        f"{split_name} examples created: "
+        f"{len(examples)}"
+    )
+
+    print(
+        f"Saved to: {output_file}"
+    )
 
 
 # ==============================
@@ -126,8 +218,12 @@ def prepare_split(split_name, question_file, answer_file):
 
 prepare_split(
     "train",
+
     DATASET_DIR / "TRAIN" / "train_questions.json",
-    DATASET_DIR / "TRAIN" / "train_answers.json"
+
+    DATASET_DIR / "TRAIN" / "train_answers.json",
+
+    DATASET_DIR / "TRAIN" / "train_images.json"
 )
 
 
@@ -137,8 +233,12 @@ prepare_split(
 
 prepare_split(
     "validation",
+
     DATASET_DIR / "VALIDATION" / "val_questions.json",
-    DATASET_DIR / "VALIDATION" / "val_answers.json"
+
+    DATASET_DIR / "VALIDATION" / "val_answers.json",
+
+    DATASET_DIR / "VALIDATION" / "val_images.json"
 )
 
 
@@ -148,10 +248,18 @@ prepare_split(
 
 prepare_split(
     "test",
+
     DATASET_DIR / "TEST" / "test_questions.json",
-    DATASET_DIR / "TEST" / "test_answers.json"
+
+    DATASET_DIR / "TEST" / "test_answers.json",
+
+    DATASET_DIR / "TEST" / "test_images.json"
 )
 
+
+# ==============================
+# FINISHED
+# ==============================
 
 print("\n================================")
 print("RSVQA preparation completed!")
